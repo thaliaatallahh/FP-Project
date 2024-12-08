@@ -1,3 +1,6 @@
+-- Thalia Atallah (220100) 
+-- Freddy Chedid (220014)
+
 import Text.Parsec
 import Text.Parsec.String (Parser)
 -- import Data.Void
