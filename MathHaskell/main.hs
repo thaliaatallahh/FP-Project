@@ -1,73 +1,63 @@
-import Data.Char (isDigit, toUpper, digitToInt, intToDigit)
+import Data.Char (isAlpha, isDigit, digitToInt, intToDigit, toUpper)
 import Data.List (isPrefixOf)
 import Numeric (readHex, showHex)
-import Text.Printf (printf)
 import Prelude hiding (log)
-import qualified Prelude (log) -- Explicitly qualify the log function
+import qualified Prelude (log)
 
--- Data type for tokens
+-- Data Types
 data Token
-    = TNum Double    -- A number token
-    | TPlus          -- '+' token
-    | TMinus         -- '-' token
-    | TMul           -- '*' token
-    | TDiv           -- '/' token
-    | TLog           -- 'log' token
-    | TExp           -- 'exp' token
-    | TSin           -- 'sin' token
-    | TCos           -- 'cos' token
-    | TTan           -- 'tan' token
-    | TCot           -- 'cot' token
-    | TLParen        -- '(' token
-    | TRParen        -- ')' token
+    = TNum Double
+    | TVar String
+    | TPlus
+    | TMinus
+    | TMul
+    | TDiv
+    | TPow
+    | TEqual
+    | TLParen
+    | TRParen
     deriving (Show)
 
--- Data type for expressions
 data Expr
-    = Num Double               -- A number
-    | Add Expr Expr            -- Addition
-    | Sub Expr Expr            -- Subtraction
-    | Mul Expr Expr            -- Multiplication
-    | Div Expr Expr            -- Division
-    | Log Expr                 -- Natural logarithm
-    | Exp Expr                 -- Exponential function
-    | Sin Expr                 -- Sine
-    | Cos Expr                 -- Cosine
-    | Tan Expr                 -- Tangent
-    | Cot Expr                 -- Cotangent
+    = Num Double
+    | Var String
+    | Add Expr Expr
+    | Sub Expr Expr
+    | Mul Expr Expr
+    | Div Expr Expr
+    | Pow Expr Expr
+    | Log Expr
     deriving (Show)
 
--- Function to tokenize input
+data Equation = Equation Expr Expr deriving (Show)
+
+-- Tokenizer
 tokenize :: String -> [Token]
 tokenize [] = []
 tokenize str@(c:cs)
-    | "log" `isPrefixOf` str = TLog : tokenize (drop 3 str)
-    | "exp" `isPrefixOf` str = TExp : tokenize (drop 3 str)
-    | "sin" `isPrefixOf` str = TSin : tokenize (drop 3 str)
-    | "cos" `isPrefixOf` str = TCos : tokenize (drop 3 str)
-    | "tan" `isPrefixOf` str = TTan : tokenize (drop 3 str)
-    | "cot" `isPrefixOf` str = TCot : tokenize (drop 3 str)
+    | "log" `isPrefixOf` str = TVar "log" : tokenize (drop 3 str)
     | c == '+'  = TPlus : tokenize cs
     | c == '-'  = TMinus : tokenize cs
     | c == '*'  = TMul : tokenize cs
     | c == '/'  = TDiv : tokenize cs
+    | c == '^'  = TPow : tokenize cs
+    | c == '='  = TEqual : tokenize cs
     | c == '('  = TLParen : tokenize cs
     | c == ')'  = TRParen : tokenize cs
+    | isAlpha c = let (var, rest) = span isAlpha (c:cs) in TVar var : tokenize rest
     | isDigit c || c == '.' = tokenizeNumber (c:cs)
     | c == ' '  = tokenize cs
     | otherwise = error ("Unexpected character: " ++ [c])
 
--- Helper function to tokenize numbers
 tokenizeNumber :: String -> [Token]
 tokenizeNumber cs =
     let (numStr, rest) = span (\x -> isDigit x || x == '.') cs
     in TNum (read numStr) : tokenize rest
 
--- Parse an expression
+-- Parser for Expressions
 parseExpr :: [Token] -> (Expr, [Token])
 parseExpr tokens = parseAddSub tokens
 
--- Parse addition and subtraction
 parseAddSub :: [Token] -> (Expr, [Token])
 parseAddSub tokens =
     let (term, rest) = parseMulDiv tokens
@@ -76,7 +66,6 @@ parseAddSub tokens =
         (TMinus:ts) -> let (expr, rest') = parseAddSub ts in (Sub term expr, rest')
         _ -> (term, rest)
 
--- Parse multiplication and division
 parseMulDiv :: [Token] -> (Expr, [Token])
 parseMulDiv tokens =
     let (factor, rest) = parseFactor tokens
@@ -85,23 +74,45 @@ parseMulDiv tokens =
         (TDiv:ts) -> let (expr, rest') = parseMulDiv ts in (Div factor expr, rest')
         _ -> (factor, rest)
 
--- Parse factors (numbers, parentheses, or functions)
 parseFactor :: [Token] -> (Expr, [Token])
+parseFactor (TNum n:TVar v:ts) = (Mul (Num n) (Var v), ts) -- Coefficient * Variable
+parseFactor (TVar "log":TLParen:ts) =
+    let (expr, rest) = parseExpr ts
+    in case rest of
+        (TRParen:ts') -> (Log expr, ts') -- Logarithmic function
+        _ -> error "Expected closing parenthesis after log"
 parseFactor (TNum n:ts) = (Num n, ts)
+parseFactor (TVar v:ts) = (Var v, ts)
 parseFactor (TLParen:ts) =
     let (expr, rest) = parseExpr ts
     in case rest of
         (TRParen:ts') -> (expr, ts')
         _ -> error "Expected closing parenthesis"
-parseFactor (TLog:ts) = let (expr, rest) = parseFactor ts in (Log expr, rest)
-parseFactor (TExp:ts) = let (expr, rest) = parseFactor ts in (Exp expr, rest)
-parseFactor (TSin:ts) = let (expr, rest) = parseFactor ts in (Sin expr, rest)
-parseFactor (TCos:ts) = let (expr, rest) = parseFactor ts in (Cos expr, rest)
-parseFactor (TTan:ts) = let (expr, rest) = parseFactor ts in (Tan expr, rest)
-parseFactor (TCot:ts) = let (expr, rest) = parseFactor ts in (Cot expr, rest)
-parseFactor _ = error "Unexpected token"
+parseFactor tokens =
+    let (base, rest) = parseFactorBase tokens
+    in case rest of
+        (TPow:ts) -> let (exponent, rest') = parseFactor ts in (Pow base exponent, rest')
+        _ -> (base, rest)
 
--- Evaluate the expression
+parseFactorBase :: [Token] -> (Expr, [Token])
+parseFactorBase (TNum n:ts) = (Num n, ts)
+parseFactorBase (TVar v:ts) = (Var v, ts)
+parseFactorBase (TLParen:ts) =
+    let (expr, rest) = parseExpr ts
+    in case rest of
+        (TRParen:ts') -> (expr, ts')
+        _ -> error "Expected closing parenthesis"
+parseFactorBase _ = error "Unexpected token"
+
+-- Parser for Equations
+parseEquation :: [Token] -> (Equation, [Token])
+parseEquation tokens =
+    let (lhs, rest) = parseExpr tokens
+    in case rest of
+        (TEqual:ts) -> let (rhs, rest') = parseExpr ts in (Equation lhs rhs, rest')
+        _ -> error $ "Expected '=' in equation, but got: " ++ show rest
+
+-- Evaluator
 evaluate :: Expr -> Double
 evaluate (Num n) = n
 evaluate (Add e1 e2) = evaluate e1 + evaluate e2
@@ -110,20 +121,45 @@ evaluate (Mul e1 e2) = evaluate e1 * evaluate e2
 evaluate (Div e1 e2) =
     let divisor = evaluate e2
     in if divisor == 0 then error "Division by zero" else evaluate e1 / divisor
-evaluate (Log e) =
-    let x = evaluate e
-    in if x <= 0 then error "Logarithm undefined for non-positive values" else Prelude.log x
-evaluate (Exp e) = exp (evaluate e)
-evaluate (Sin e) = sin (evaluate e)
-evaluate (Cos e) = cos (evaluate e)
-evaluate (Tan e) =
-    let x = evaluate e
-    in if cos x == 0 then error "Tangent undefined" else tan x
-evaluate (Cot e) =
-    let x = evaluate e
-    in if sin x == 0 then error "Cotangent undefined" else 1 / tan x
+evaluate (Pow e1 e2) = evaluate e1 ** evaluate e2
+evaluate (Log e) = Prelude.log (evaluate e)
 
--- Conversion functions
+-- Solver for Equations
+solveEquation :: Equation -> String
+-- Case: 2x + 3 = log(3)
+solveEquation (Equation (Add (Mul (Num a) (Var "x")) (Num b)) (Log (Num c))) =
+    let x = (Prelude.log c - b) / a in "x = " ++ show x
+
+-- Case: 2x + log(3) = 1
+solveEquation (Equation (Add (Mul (Num a) (Var "x")) (Log (Num b))) (Num c)) =
+    let x = (c - Prelude.log b) / a in "x = " ++ show x
+
+-- Case: 2x * log(3) = 0
+solveEquation (Equation (Mul (Mul (Num a) (Var "x")) (Log (Num b))) (Num c)) =
+    if c == 0 then "x = 0 (Product is zero)" else "No solution for this form."
+
+-- Case: 2x + 3 = 7
+solveEquation (Equation (Add (Mul (Num a) (Var "x")) (Num b)) (Num c)) =
+    let x = (c - b) / a in "x = " ++ show x
+
+-- Case: log(a) + x = c
+solveEquation (Equation (Add (Log (Num a)) (Var "x")) (Num c)) =
+    let x = c - Prelude.log a in "x = " ++ show x
+
+
+-- Case: log(a * x) = c
+solveEquation (Equation (Log (Mul (Num a) (Var "x"))) (Num c)) =
+    let x = (Prelude.exp c) / a in "x = " ++ show x
+
+-- Case: log(x) = c
+solveEquation (Equation (Log (Var "x")) (Num c)) =
+    let x = Prelude.exp c in "x = " ++ show x
+
+-- Default case
+solveEquation _ = "Equation solver is not yet implemented for this form."
+
+
+-- Conversion Functions
 binaryToDecimal :: String -> Int
 binaryToDecimal = foldl (\acc x -> acc * 2 + digitToInt x) 0
 
@@ -146,12 +182,13 @@ binaryToHex bin = decimalToHex (binaryToDecimal bin)
 hexToBinary :: String -> String
 hexToBinary hex = decimalToBinary (hexToDecimal hex)
 
--- Main program
+-- Main Program
 main :: IO ()
 main = do
     putStrLn "Select an option:"
     putStrLn "1. Perform mathematical calculations"
     putStrLn "2. Convert between binary, hex, and decimal"
+    putStrLn "3. Solve equations"
     choice <- getLine
     case choice of
         "1" -> do
@@ -189,6 +226,10 @@ main = do
                     dec <- getLine
                     putStrLn $ "Hex: " ++ decimalToHex (read dec)
                 _ -> putStrLn "Invalid conversion type!"
+        "3" -> do
+            putStrLn "Enter an equation (e.g., 2x + 3 = 7):"
+            input <- getLine
+            let tokens = tokenize input
+            let (eq, _) = parseEquation tokens
+            putStrLn $ solveEquation eq
         _ -> putStrLn "Invalid option!"
-
-
