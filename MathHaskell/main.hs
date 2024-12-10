@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 import Data.Char (isAlpha, isDigit, digitToInt, intToDigit, toUpper)
 import Data.List (isPrefixOf)
 import Numeric (readHex, showHex)
@@ -162,11 +161,15 @@ solveEquation (Equation (Add (Log (Num a)) (Var "x")) (Num c)) =
 
 -- Case: log(a * x) = c
 solveEquation (Equation (Log (Mul (Num a) (Var "x"))) (Num c)) =
-    let x = (Prelude.exp c) / a in "x = " ++ show x
+    let x = (exp c) / a in "x = " ++ show x
 
 -- Case: log(x) = c
 solveEquation (Equation (Log (Var "x")) (Num c)) =
-    let x = Prelude.exp c in "x = " ++ show x
+    let x = exp c in "x = " ++ show x
+
+-- Case: log(a * x) + b = c
+solveEquation (Equation (Add (Log (Mul (Num a) (Var "x"))) (Num b)) (Num c)) =
+    let x = exp (c - b) / a in "x = " ++ show x
 
 -- Default case
 solveEquation _ = "Equation solver is not yet implemented for this form."
