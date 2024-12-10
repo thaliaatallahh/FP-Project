@@ -1,5 +1,7 @@
-import Data.Char (isDigit)
+import Data.Char (isDigit, toUpper, digitToInt, intToDigit)
 import Data.List (isPrefixOf)
+import Numeric (readHex, showHex)
+import Text.Printf (printf)
 import Prelude hiding (log)
 import qualified Prelude (log) -- Explicitly qualify the log function
 
@@ -121,11 +123,72 @@ evaluate (Cot e) =
     let x = evaluate e
     in if sin x == 0 then error "Cotangent undefined" else 1 / tan x
 
--- Main function to run the calculator
+-- Conversion functions
+binaryToDecimal :: String -> Int
+binaryToDecimal = foldl (\acc x -> acc * 2 + digitToInt x) 0
+
+decimalToBinary :: Int -> String
+decimalToBinary 0 = "0"
+decimalToBinary n = reverse (helper n)
+  where
+    helper 0 = []
+    helper x = let (q, r) = x `divMod` 2 in (intToDigit r) : helper q
+
+hexToDecimal :: String -> Int
+hexToDecimal hex = fst . head $ readHex hex
+
+decimalToHex :: Int -> String
+decimalToHex n = map toUpper (showHex n "")
+
+binaryToHex :: String -> String
+binaryToHex bin = decimalToHex (binaryToDecimal bin)
+
+hexToBinary :: String -> String
+hexToBinary hex = decimalToBinary (hexToDecimal hex)
+
+-- Main program
 main :: IO ()
 main = do
-    putStrLn "Enter a mathematical expression:"
-    input <- getLine
-    let tokens = tokenize input
-    let (ast, _) = parseExpr tokens
-    print $ evaluate ast
+    putStrLn "Select an option:"
+    putStrLn "1. Perform mathematical calculations"
+    putStrLn "2. Convert between binary, hex, and decimal"
+    choice <- getLine
+    case choice of
+        "1" -> do
+            putStrLn "Enter a mathematical expression:"
+            input <- getLine
+            let tokens = tokenize input
+            let (ast, _) = parseExpr tokens
+            print $ evaluate ast
+        "2" -> do
+            putStrLn "Enter conversion type (binaryToHex, hexToBinary, decimalToBinary, binaryToDecimal, hexToDecimal, decimalToHex):"
+            conversion <- getLine
+            case conversion of
+                "binaryToHex" -> do
+                    putStrLn "Enter binary number:"
+                    bin <- getLine
+                    putStrLn $ "Hex: " ++ binaryToHex bin
+                "hexToBinary" -> do
+                    putStrLn "Enter hex number:"
+                    hex <- getLine
+                    putStrLn $ "Binary: " ++ hexToBinary hex
+                "decimalToBinary" -> do
+                    putStrLn "Enter decimal number:"
+                    dec <- getLine
+                    putStrLn $ "Binary: " ++ decimalToBinary (read dec)
+                "binaryToDecimal" -> do
+                    putStrLn "Enter binary number:"
+                    bin <- getLine
+                    putStrLn $ "Decimal: " ++ show (binaryToDecimal bin)
+                "hexToDecimal" -> do
+                    putStrLn "Enter hex number:"
+                    hex <- getLine
+                    putStrLn $ "Decimal: " ++ show (hexToDecimal hex)
+                "decimalToHex" -> do
+                    putStrLn "Enter decimal number:"
+                    dec <- getLine
+                    putStrLn $ "Hex: " ++ decimalToHex (read dec)
+                _ -> putStrLn "Invalid conversion type!"
+        _ -> putStrLn "Invalid option!"
+
+
