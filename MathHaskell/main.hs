@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 import Data.Char (isAlpha, isDigit, digitToInt, intToDigit, toUpper)
 import Data.List (isPrefixOf)
 import Numeric (readHex, showHex)
@@ -27,6 +28,8 @@ data Expr
     | Div Expr Expr
     | Pow Expr Expr
     | Log Expr
+    | Sin Expr 
+    | Cos Expr 
     deriving (Show)
 
 data Equation = Equation Expr Expr deriving (Show)
@@ -36,6 +39,8 @@ tokenize :: String -> [Token]
 tokenize [] = []
 tokenize str@(c:cs)
     | "log" `isPrefixOf` str = TVar "log" : tokenize (drop 3 str)
+    | "sin" `isPrefixOf` str = TVar "sin" : tokenize (drop 3 str)
+    | "cos" `isPrefixOf` str = TVar "cos" : tokenize (drop 3 str)
     | c == '+'  = TPlus : tokenize cs
     | c == '-'  = TMinus : tokenize cs
     | c == '*'  = TMul : tokenize cs
@@ -81,6 +86,16 @@ parseFactor (TVar "log":TLParen:ts) =
     in case rest of
         (TRParen:ts') -> (Log expr, ts') -- Logarithmic function
         _ -> error "Expected closing parenthesis after log"
+parseFactor (TVar "sin":TLParen:ts) =
+    let (expr, rest) = parseExpr ts
+    in case rest of
+        (TRParen:ts') -> (Sin expr, ts') 
+        _ -> error "Expected closing parenthesis after sin"
+parseFactor (TVar "cos":TLParen:ts) =
+    let (expr, rest) = parseExpr ts
+    in case rest of
+        (TRParen:ts') -> (Cos expr, ts') 
+        _ -> error "Expected closing parenthesis after cos"
 parseFactor (TNum n:ts) = (Num n, ts)
 parseFactor (TVar v:ts) = (Var v, ts)
 parseFactor (TLParen:ts) =
@@ -88,12 +103,8 @@ parseFactor (TLParen:ts) =
     in case rest of
         (TRParen:ts') -> (expr, ts')
         _ -> error "Expected closing parenthesis"
-parseFactor tokens =
-    let (base, rest) = parseFactorBase tokens
-    in case rest of
-        (TPow:ts) -> let (exponent, rest') = parseFactor ts in (Pow base exponent, rest')
-        _ -> (base, rest)
-
+parseFactor tokens = parseFactorBase tokens
+    
 parseFactorBase :: [Token] -> (Expr, [Token])
 parseFactorBase (TNum n:ts) = (Num n, ts)
 parseFactorBase (TVar v:ts) = (Var v, ts)
@@ -123,6 +134,8 @@ evaluate (Div e1 e2) =
     in if divisor == 0 then error "Division by zero" else evaluate e1 / divisor
 evaluate (Pow e1 e2) = evaluate e1 ** evaluate e2
 evaluate (Log e) = Prelude.log (evaluate e)
+evaluate (Sin e) = Prelude.sin (evaluate e * pi / 180)
+evaluate (Cos e) = Prelude.cos (evaluate e * pi / 180)
 
 -- Solver for Equations
 solveEquation :: Equation -> String
